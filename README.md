@@ -5,6 +5,7 @@ prontos para TikTok, Instagram Reels, YouTube Shorts e Facebook.
 
 ## O que ele faz
 
+0. **Pega o video** de um arquivo do computador ou de um **link** (YouTube, Instagram, TikTok, Facebook, X e muitos outros).
 1. **Transcreve** o audio (Whisper, roda no seu computador).
 2. **Escolhe os melhores momentos** com a IA que voce preferir: na nuvem, local ou pelo modo gratuito (veja abaixo).
 3. **Corta** cada trecho e **reenquadra** no formato escolhido, seguindo o rosto de quem fala.
@@ -12,6 +13,21 @@ prontos para TikTok, Instagram Reels, YouTube Shorts e Facebook.
 5. Salva tudo numa pasta, com um `resumo.txt` explicando cada corte.
 
 Formatos: **9:16** (TikTok, Reels, Shorts, Facebook Reels), **4:5** (feed) e **1:1** (quadrado).
+
+## Baixar videos por link
+
+Cole o link no painel da esquerda e clique em **Baixar do link** (ou va direto em **Gerar cortes**:
+o programa baixa sozinho). Os videos baixados ficam em `<pasta de saida>\downloads`.
+
+- Use so videos **seus ou com autorizacao**. Baixar e cortar videos de terceiros pode violar direitos
+  autorais e os termos das plataformas.
+- Instagram e videos privados ou com restricao de idade podem exigir login: escolha o navegador em
+  **Entrar com** (voce precisa estar logado nele) e feche o navegador antes. O Firefox costuma dar
+  menos problema que Chrome e Edge.
+- Se o YouTube pedir para confirmar que voce nao e um robo, o mesmo recurso ajuda.
+- As plataformas mudam com frequencia e o componente de download (yt-dlp) precisa acompanhar.
+  Se um site parar de funcionar, rode o **Gerar instalador do Windows** de novo: cada build pega a
+  versao mais nova do yt-dlp.
 
 ## Qual IA usar para escolher os momentos
 
@@ -67,6 +83,7 @@ cortes/pipeline.py       junta todas as etapas
 cortes/transcricao.py    Whisper
 cortes/momentos.py       escolha dos melhores momentos
 cortes/ia.py             conversa com IAs da nuvem e locais
+cortes/download.py       baixa videos de links (yt-dlp)
 cortes/rosto.py          deteccao de rosto (MediaPipe)
 cortes/reenquadrar.py    recorte vertical seguindo o rosto
 cortes/legendas.py       legendas animadas

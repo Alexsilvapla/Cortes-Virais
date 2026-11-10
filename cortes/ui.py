@@ -9,6 +9,7 @@ import cv2
 from PIL import Image
 
 from . import ia as servico_ia
+from .download import NAVEGADORES, baixar_video
 from .pipeline import gerar_cortes
 from .reenquadrar import calcular_recorte, posicao_recorte
 from .rosto import achar_rosto, criar_detector
@@ -56,6 +57,7 @@ class App(ctk.CTk):
         self.quadro_preview = None
         self.rosto_preview = None
         self.trabalhando = False
+        self.link_baixado = None  # (link, caminho)
         self.ia_salva = dict(self.salvo.get("ia", {}))
         if self.salvo.get("chave_api") and "anthropic" not in self.ia_salva:
             self.ia_salva["anthropic"] = {"chave": self.salvo["chave_api"]}
@@ -98,21 +100,50 @@ class App(ctk.CTk):
             c, text="1. Escolha o video", font=ctk.CTkFont(size=16, weight="bold")
         ).pack(anchor="w", padx=20, pady=(20, 10))
 
-        zona = ctk.CTkFrame(c, fg_color=CARTAO_2, corner_radius=16)
+        zona = ctk.CTkScrollableFrame(c, fg_color=CARTAO_2, corner_radius=16)
         zona.pack(fill="both", expand=True, padx=20, pady=(0, 20))
-        ctk.CTkLabel(zona, text="🎬", font=ctk.CTkFont(size=54)).pack(pady=(40, 6))
+
+        ctk.CTkLabel(zona, text="🎬", font=ctk.CTkFont(size=40)).pack(pady=(10, 4))
         self.lbl_arquivo = ctk.CTkLabel(
             zona, text="Nenhum video escolhido", text_color=SUAVE,
-            wraplength=240, justify="center",
+            wraplength=230, justify="center",
         )
-        self.lbl_arquivo.pack(padx=12, pady=(0, 4))
+        self.lbl_arquivo.pack(padx=12, pady=(0, 2))
         self.lbl_info = ctk.CTkLabel(zona, text="", text_color=SUAVE)
-        self.lbl_info.pack(pady=(0, 16))
+        self.lbl_info.pack(pady=(0, 10))
         ctk.CTkButton(
-            zona, text="Escolher video", height=44, corner_radius=12,
+            zona, text="Escolher arquivo", height=42, corner_radius=12,
             fg_color=DESTAQUE, hover_color=DESTAQUE_HOVER,
             font=ctk.CTkFont(size=15, weight="bold"), command=self._escolher_video,
-        ).pack(padx=20, pady=(0, 30), fill="x")
+        ).pack(padx=14, fill="x")
+
+        ctk.CTkLabel(
+            zona, text="ou cole o link do video", text_color=SUAVE
+        ).pack(pady=(16, 4))
+        self.entrada_link = ctk.CTkEntry(
+            zona, placeholder_text="YouTube, Instagram, TikTok...", fg_color=CARTAO,
+            border_width=0, height=38,
+        )
+        self.entrada_link.pack(padx=14, fill="x")
+        ctk.CTkLabel(zona, text="Entrar com (se o video exigir login)", text_color=SUAVE,
+                     font=ctk.CTkFont(size=12)).pack(anchor="w", padx=14, pady=(10, 2))
+        self.menu_cookies = ctk.CTkOptionMenu(
+            zona, values=list(NAVEGADORES), fg_color=CARTAO, button_color=DESTAQUE,
+            button_hover_color=DESTAQUE_HOVER,
+        )
+        self.menu_cookies.set(self.salvo.get("navegador", "Sem login"))
+        self.menu_cookies.pack(padx=14, fill="x")
+        self.btn_baixar = ctk.CTkButton(
+            zona, text="Baixar do link", height=38, corner_radius=12, fg_color=CARTAO,
+            hover_color="#2a3040", command=self._baixar,
+        )
+        self.btn_baixar.pack(padx=14, pady=(10, 4), fill="x")
+        ctk.CTkLabel(
+            zona,
+            text="Use so videos seus ou com autorizacao. Para Instagram e videos "
+                 "privados, fique logado no navegador escolhido e feche-o antes.",
+            text_color=SUAVE, font=ctk.CTkFont(size=11), wraplength=230, justify="left",
+        ).pack(anchor="w", padx=14, pady=(2, 10))
 
     def _montar_centro(self):
         c = self._cartao(self)
@@ -421,11 +452,49 @@ class App(ctk.CTk):
         )
         if not caminho:
             return
+        self.entrada_link.delete(0, "end")
+        self._usar_video(caminho)
+
+    def _usar_video(self, caminho):
         self.video = caminho
         self.lbl_arquivo.configure(text=os.path.basename(caminho))
         self.lbl_info.configure(text="Lendo o video...")
         self.quadro_preview = None
         threading.Thread(target=self._carregar_preview, args=(caminho,), daemon=True).start()
+
+    def _pasta_downloads(self):
+        return os.path.join(self.pasta_saida, "downloads")
+
+    def _link_digitado(self):
+        link = self.entrada_link.get().strip()
+        return link if link else None
+
+    def _baixar(self):
+        if self.trabalhando:
+            return
+        link = self._link_digitado()
+        if not link or not link.lower().startswith(("http://", "https://")):
+            self.lbl_status.configure(text="Cole um link que comece com http:// ou https://")
+            return
+        navegador = NAVEGADORES[self.menu_cookies.get()]
+        self.trabalhando = True
+        self.btn_baixar.configure(state="disabled", text="Baixando...")
+        self.btn_gerar.configure(state="disabled")
+        self.barra.set(0)
+        self.lbl_status.configure(text="Baixando o video...")
+        self._escrever_log(f"Baixando: {link}")
+
+        def tarefa():
+            try:
+                caminho = baixar_video(
+                    link, self._pasta_downloads(), navegador,
+                    progresso=lambda f: self.fila.put(("progresso", f, "Baixando o video...")),
+                )
+                self.fila.put(("baixado", link, caminho, True))
+            except Exception as erro:
+                self.fila.put(("erro_download", str(erro)))
+
+        threading.Thread(target=tarefa, daemon=True).start()
 
     def _carregar_preview(self, caminho):
         try:
@@ -471,9 +540,19 @@ class App(ctk.CTk):
     def _gerar(self):
         if self.trabalhando:
             return
-        if not self.video:
-            self._escrever_log("Escolha um video primeiro.")
-            self.lbl_status.configure(text="Escolha um video primeiro.")
+        link = self._link_digitado()
+        usar_link = None
+        if link:
+            if not link.lower().startswith(("http://", "https://")):
+                self.lbl_status.configure(text="O link precisa comecar com http:// ou https://")
+                return
+            if self.link_baixado and self.link_baixado[0] == link and os.path.exists(self.link_baixado[1]):
+                self.video = self.link_baixado[1]
+            else:
+                usar_link = link
+        elif not self.video:
+            self._escrever_log("Escolha um video ou cole um link primeiro.")
+            self.lbl_status.configure(text="Escolha um video ou cole um link primeiro.")
             return
 
         ia = self._config_ia()
@@ -495,6 +574,8 @@ class App(ctk.CTk):
             "idioma": IDIOMAS[self.menu_idioma.get()],
             "ia": ia,
             "modelo_whisper": "small",
+            "link": usar_link,
+            "navegador": NAVEGADORES[self.menu_cookies.get()],
         }
         self._guardar_campos()
         salvar_config({
@@ -506,16 +587,27 @@ class App(ctk.CTk):
             "legendas": cfg["legendas"],
             "tipo_ia": self._tipo_ia(),
             "ia": self.ia_salva,
+            "navegador": self.menu_cookies.get(),
         })
 
         self.trabalhando = True
         self.btn_gerar.configure(state="disabled", text="Gerando...")
+        self.btn_baixar.configure(state="disabled")
         self.btn_abrir.configure(state="disabled")
         self.barra.set(0)
         threading.Thread(target=self._trabalho, args=(cfg,), daemon=True).start()
 
     def _trabalho(self, cfg):
         try:
+            if cfg.get("link"):
+                self.fila.put(("log", f"Baixando o video do link: {cfg['link']}"))
+                caminho = baixar_video(
+                    cfg["link"], os.path.join(cfg["pasta_saida"], "downloads"), cfg.get("navegador"),
+                    progresso=lambda f: self.fila.put(("progresso", f, "Baixando o video...")),
+                )
+                cfg["video"] = caminho
+                self.fila.put(("baixado", cfg["link"], caminho, False))
+                self.fila.put(("log", "Download concluido."))
             pasta = gerar_cortes(
                 cfg,
                 log=lambda m: self.fila.put(("log", m)),
@@ -554,6 +646,22 @@ class App(ctk.CTk):
                     self.quadro_preview, self.rosto_preview = msg[1], msg[2]
                     self.lbl_info.configure(text=msg[3])
                     self._desenhar_preview()
+                elif tipo == "baixado":
+                    self.link_baixado = (msg[1], msg[2])
+                    self._usar_video(msg[2])
+                    if msg[3]:  # download feito pelo botao "Baixar do link"
+                        self.trabalhando = False
+                        self.btn_baixar.configure(state="normal", text="Baixar do link")
+                        self.btn_gerar.configure(state="normal")
+                        self.barra.set(1)
+                        self.lbl_status.configure(text="Video baixado! Agora e so gerar os cortes.")
+                        self._escrever_log("Video baixado: " + os.path.basename(msg[2]))
+                elif tipo == "erro_download":
+                    self.trabalhando = False
+                    self.btn_baixar.configure(state="normal", text="Baixar do link")
+                    self.btn_gerar.configure(state="normal")
+                    self.lbl_status.configure(text="Nao deu para baixar o video.")
+                    self._escrever_log("ERRO: " + msg[1])
                 elif tipo == "ia_teste":
                     if msg[1]:
                         modelos = msg[2]
@@ -576,11 +684,13 @@ class App(ctk.CTk):
                     self.trabalhando = False
                     self.pasta_resultado = msg[1]
                     self.btn_gerar.configure(state="normal", text="✨  Gerar cortes")
+                    self.btn_baixar.configure(state="normal", text="Baixar do link")
                     self.btn_abrir.configure(state="normal")
                     self.lbl_status.configure(text="Tudo pronto! Seus cortes estao na pasta de saida.")
                 elif tipo == "erro":
                     self.trabalhando = False
                     self.btn_gerar.configure(state="normal", text="✨  Gerar cortes")
+                    self.btn_baixar.configure(state="normal", text="Baixar do link")
                     self.lbl_status.configure(text="Deu um erro. Veja os detalhes abaixo.")
                     self._escrever_log(f"ERRO: {msg[1]}")
                     self._escrever_log(f"Detalhes tecnicos salvos em: {ARQ_ERRO}")

@@ -5,3 +5,4 @@ numpy
 Pillow
 faster-whisper
 imageio-ffmpeg
+yt-dlp[default]

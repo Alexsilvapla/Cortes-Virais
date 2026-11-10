@@ -51,6 +51,17 @@ def caminho_ffmpeg():
     raise RuntimeError("FFmpeg nao encontrado.")
 
 
+def pasta_ffmpeg():
+    """Pasta com um arquivo chamado exatamente ffmpeg(.exe) (o yt-dlp exige esse nome)."""
+    origem = caminho_ffmpeg()
+    pasta = os.path.join(PASTA_DADOS, "ffmpeg_bin")
+    os.makedirs(pasta, exist_ok=True)
+    destino = os.path.join(pasta, "ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+    if not os.path.exists(destino) or os.path.getsize(destino) != os.path.getsize(origem):
+        shutil.copy2(origem, destino)
+    return pasta
+
+
 def rodar_ffmpeg(argumentos):
     comando = [caminho_ffmpeg(), "-y", "-loglevel", "error"] + argumentos
     flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
