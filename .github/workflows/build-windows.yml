@@ -1,0 +1,70 @@
+name: Gerar instalador do Windows
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Baixar o codigo
+        uses: actions/checkout@v4
+
+      - name: Instalar o Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Instalar as bibliotecas
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Testar se o codigo carrega
+        run: python -c "from cortes import ui, pipeline, momentos, legendas, reenquadrar, transcricao"
+
+      - name: Baixar o modelo de rosto
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path assets | Out-Null
+          Invoke-WebRequest -Uri "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite" -OutFile "assets/blaze_face_short_range.tflite"
+
+      - name: Gerar o programa (PyInstaller)
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name CortesVirais `
+            --add-data "assets;assets" `
+            --collect-all customtkinter `
+            --collect-all mediapipe `
+            --collect-all faster_whisper `
+            --collect-all ctranslate2 `
+            --collect-all onnxruntime `
+            --collect-all av `
+            --collect-all imageio_ffmpeg `
+            main.py
+
+      - name: Instalar o Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Gerar o instalador
+        shell: pwsh
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss'
+
+      - name: Guardar o instalador
+        uses: actions/upload-artifact@v4
+        with:
+          name: CortesVirais-Instalador
+          path: Output/CortesVirais-Setup.exe
+
+      - name: Publicar na aba Releases (so quando for uma tag v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Output/CortesVirais-Setup.exe
