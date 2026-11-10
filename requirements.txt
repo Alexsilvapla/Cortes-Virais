@@ -1,0 +1,7 @@
+customtkinter
+opencv-python
+mediapipe
+numpy
+Pillow
+faster-whisper
+imageio-ffmpeg
