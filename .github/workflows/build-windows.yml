@@ -28,13 +28,20 @@ jobs:
           pip install -r requirements.txt pyinstaller
 
       - name: Testar se o codigo carrega
-        run: python -c "from cortes import ui, pipeline, momentos, legendas, reenquadrar, transcricao"
+        run: python -c "from cortes import ui, pipeline, momentos, legendas, reenquadrar, transcricao, download"
 
       - name: Baixar o modelo de rosto
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path assets | Out-Null
           Invoke-WebRequest -Uri "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite" -OutFile "assets/blaze_face_short_range.tflite"
+
+      - name: Baixar o Deno (motor de JavaScript que o YouTube exige)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip" -OutFile deno.zip
+          Expand-Archive -Path deno.zip -DestinationPath assets -Force
+          Remove-Item deno.zip
 
       - name: Gerar o programa (PyInstaller)
         shell: pwsh
@@ -48,6 +55,8 @@ jobs:
             --collect-all onnxruntime `
             --collect-all av `
             --collect-all imageio_ffmpeg `
+            --collect-all yt_dlp `
+            --collect-all yt_dlp_ejs `
             main.py
 
       - name: Instalar o Inno Setup
